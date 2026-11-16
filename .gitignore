@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Prisma
+prisma/migrations/
+prisma/generated/
+
+# Uploads
+src/uploads/
+
+# Environment files
+.env
+.env.*
+!.env.example
