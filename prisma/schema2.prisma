@@ -771,6 +771,7 @@ model tr_authorization_doc {
   @@index([plant_id], map: "tr_additional_doc_plant_id_fkey")
   @@index([department_id], map: "tr_additional_doc_department_id_fkey")
   @@index([section_department_id], map: "tr_additional_doc_section_department_id_fkey")
+  @@index([created_date], map: "idx_tr_authorization_doc_created_date")
 }
 
 model tr_proposed_changes {
@@ -832,6 +833,7 @@ model tr_proposed_changes {
   @@index([bypass_date], map: "idx_bypass_date")
   @@index([is_bypassed], map: "idx_is_bypassed")
   @@index([status, progress], map: "idx_tr_proposed_changes_status_progress")
+  @@index([created_date], map: "idx_tr_proposed_changes_created_date")
 }
 
 model tr_handover {
@@ -883,6 +885,7 @@ model tr_handover {
   @@index([proposed_change_id], map: "proposed_change_id")
   @@index([section_department_id], map: "section_department_id")
   @@index([auth_id5], map: "auth_id5")
+  @@index([created_date], map: "idx_tr_handover_created_date")
 }
 
 model tr_handover_approval {

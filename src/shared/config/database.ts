@@ -1,5 +1,5 @@
-import { PrismaClient as PrismaClientDB1 } from "../../prisma/generated/db1";
-import { PrismaClient as PrismaClientDB2 } from "../../prisma/generated/db2";
+import { PrismaClient as PrismaClientDB1 } from "../../../prisma/generated/db1";
+import { PrismaClient as PrismaClientDB2 } from "../../../prisma/generated/db2";
 import * as dotenv from "dotenv";
 
 // Load environment-specific configuration

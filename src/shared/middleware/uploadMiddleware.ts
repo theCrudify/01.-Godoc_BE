@@ -31,7 +31,9 @@ const storage = multer.diskStorage({
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const ext = path.extname(file.originalname).toLowerCase();
   if (!allowedExtensions.includes(ext)) {
-    return cb(new Error("Only PDF, DOC, DOCX, JPG, JPEG, and PNG files are allowed"));
+    const err: any = new Error("Only PDF, DOC, DOCX, JPG, JPEG, and PNG files are allowed");
+    err.expose = true; // pesan validasi aman ditampilkan ke user
+    return cb(err);
   }
   cb(null, true);
 };

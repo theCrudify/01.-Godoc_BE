@@ -1,7 +1,8 @@
-import { prismaDB2 } from "../../../../config/database";
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { getStatusText, sendEmail, getDocumentNumber, getGenderTitle, getGreeting } from "../EmailServiceEnvironment/EmailServiceExport";
+import { getStatusText, sendEmail, getGenderTitle, getGreeting } from "../../../shared/mail/mail.service";
+import * as repo from "./approval.repository";
+import * as pcRepo from "../proposed-changes.repository";
 // Pastikan tipe enum ini diimpor atau tersedia
 export enum email_tracking_proposedchanges_recipient_type {
   submitter = 'submitter',
@@ -45,29 +46,18 @@ function hashString(str: string): string {
 const getEmailData = async (proposedChangesId: number, authId: number) => {
   console.log(`🔍 [getEmailData] Getting data for proposedChangesId=${proposedChangesId}, authId=${authId}`);
   try {
-    const proposedChange = await prismaDB2.tr_proposed_changes.findUnique({
-      where: { id: proposedChangesId },
-      include: {
-        documentNumber: true,
-        approvals: {
-          include: {
-            authorization: true
-          },
-          orderBy: {
-            step: 'asc'
-          }
-        }
-      }
-    });
+    // latestHistory does not depend on proposedChange, so both are read together
+    const [proposedChange, latestHistory] = await Promise.all([
+      pcRepo.findWithApprovals(proposedChangesId),
+      repo.findLatestHistory(proposedChangesId, authId),
+    ]);
 
     if (!proposedChange) {
       throw new Error(`Proposed change with ID ${proposedChangesId} not found`);
     }
     console.log(`✅ Found proposed change: ${proposedChange.project_name}`);
 
-    const submitter = await prismaDB2.mst_authorization.findUnique({
-      where: { id: proposedChange.auth_id || 0 }
-    });
+    const submitter = await pcRepo.findAuthorizationById(proposedChange.auth_id || 0);
     console.log(`✅ Found submitter: ${submitter?.employee_name || 'Unknown'}`);
 
     const currentApprover = proposedChange.approvals.find(a => a.auth_id === authId);
@@ -84,15 +74,6 @@ const getEmailData = async (proposedChangesId: number, authId: number) => {
     const isLastApprover = !nextApprover;
     console.log(`✅ Is last approver: ${isLastApprover}`);
 
-    const latestHistory = await prismaDB2.tr_proposed_changes_history.findFirst({
-      where: {
-        proposed_changes_id: proposedChangesId,
-        auth_id: authId
-      },
-      orderBy: {
-        created_date: 'desc'
-      }
-    });
     console.log(`✅ Latest history found: ${latestHistory ? 'Yes' : 'No'}`);
 
     return {
@@ -122,19 +103,13 @@ const checkEmailLog = async (
   noteHash: string
 ): Promise<boolean> => {
   try {
-    const existingLog = await prismaDB2.email_tracking_proposedchanges.findFirst({
-      where: {
-        proposed_changes_id: proposedChangesId,
-        recipient_email: recipientEmail,
-        recipient_type: recipientType,
-        status: status,
-        note_hash: noteHash,
-        // Anda mungkin ingin menambahkan kondisi is_success: true jika hanya ingin
-        // mencegah pengiriman ulang email yang SUDAH BERHASIL terkirim.
-        // Jika ingin mencegah percobaan pengiriman ganda meski yang pertama gagal,
-        // kondisi is_success tidak perlu ditambahkan di sini.
-      },
-      select: { id: true } // Hanya perlu cek keberadaan
+    // tanpa filter is_success: percobaan kirim ganda juga dicegah walau yang pertama gagal
+    const existingLog = await repo.findEmailLog({
+      proposed_changes_id: proposedChangesId,
+      recipient_email: recipientEmail,
+      recipient_type: recipientType,
+      status: status,
+      note_hash: noteHash,
     });
     const found = !!existingLog;
     console.log(`[checkEmailLog] Found existing log for ${recipientEmail} (${recipientType}, ${status}, hash:${noteHash}): ${found}`);
@@ -163,18 +138,15 @@ const createEmailLogEntry = async (
 
   try {
     // Coba create, tangkap error jika constraint violation
-    const newLog = await prismaDB2.email_tracking_proposedchanges.create({
-      data: {
-        proposed_changes_id: proposedChangesId,
-        recipient_email: recipientEmail,
-        recipient_type: recipientType,
-        status: status,
-        note_hash: noteHash,
-        note_text: noteText,
-        is_success: false,
-        retry_count: 0,
-      },
-      select: { id: true }
+    const newLog = await repo.createEmailLog({
+      proposed_changes_id: proposedChangesId,
+      recipient_email: recipientEmail,
+      recipient_type: recipientType,
+      status: status,
+      note_hash: noteHash,
+      note_text: noteText,
+      is_success: false,
+      retry_count: 0,
     });
     console.log(`[createEmailLogEntry] Created log entry ID: ${newLog.id}`);
     return newLog.id;
@@ -183,15 +155,12 @@ const createEmailLogEntry = async (
     if ((error as any)?.code === 'P2002') {
       console.log(`[createEmailLogEntry] Entry already exists for ${recipientEmail}, retrieving existing ID`);
       // Dapatkan ID yang sudah ada
-      const existingLog = await prismaDB2.email_tracking_proposedchanges.findFirst({
-        where: {
-          proposed_changes_id: proposedChangesId,
-          recipient_email: recipientEmail,
-          recipient_type: recipientType,
-          status: status,
-          note_hash: noteHash
-        },
-        select: { id: true }
+      const existingLog = await repo.findEmailLog({
+        proposed_changes_id: proposedChangesId,
+        recipient_email: recipientEmail,
+        recipient_type: recipientType,
+        status: status,
+        note_hash: noteHash
       });
       if (existingLog) return existingLog.id;
     }
@@ -220,10 +189,7 @@ const updateEmailLogStatus = async (
     // Hapus properti undefined agar tidak diupdate oleh Prisma
     Object.keys(dataToUpdate).forEach(key => dataToUpdate[key] === undefined && delete dataToUpdate[key]);
 
-    await prismaDB2.email_tracking_proposedchanges.update({
-      where: { id: logId },
-      data: dataToUpdate
-    });
+    await repo.updateEmailLog(logId, dataToUpdate);
     console.log(`[updateEmailLogStatus] Updated log entry ID: ${logId}, Success: ${success}`);
   } catch (error) {
     console.error(`[updateEmailLogStatus] Error updating log entry ID: ${logId}:`, error);
@@ -252,7 +218,8 @@ export const sendApprovalEmails = async (
 
   try {
     const data = await getEmailData(proposedChangesId, authId);
-    const runningNumber = await getDocumentNumber(proposedChangesId);
+    // Same value getDocumentNumber() would return, taken from the record already loaded above
+    const runningNumber = data.proposedChange.documentNumber?.running_number || "N/A";
     const note = currentNote || '';
     const noteHash = hashString(note);
     console.log(`📝 Using note: "${note.substring(0, 50)}${note.length > 50 ? '...' : ''}", Hash: ${noteHash}`);

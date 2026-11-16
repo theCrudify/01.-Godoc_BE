@@ -1,35 +1,17 @@
-// Import at the top of your file
-import { getStatusText, sendEmail, getDocumentNumber, getGenderTitle, getGreeting } from "../EmailServiceEnvironment/EmailServiceExport";
-import { prismaDB2 } from "../../../../config/database";
+import { sendEmail, getGenderTitle, getGreeting } from "../../shared/mail/mail.service";
+import * as repo from "./proposed-changes.repository";
 
-
-// Add this new function to handle "submitted" notifications specifically
+// Email "submitted": ke submitter dan approver pertama (status on_going).
 async function sendSubmissionEmails(proposedChangesId: number, authId: number): Promise<void> {
     try {
-        // Get the proposed change data with document number and approvals
-        const proposedChange = await prismaDB2.tr_proposed_changes.findUnique({
-            where: { id: proposedChangesId },
-            include: {
-                documentNumber: true,
-                approvals: {
-                    include: {
-                        authorization: true
-                    },
-                    orderBy: {
-                        step: 'asc'
-                    }
-                }
-            }
-        });
+        const [proposedChange, submitter] = await Promise.all([
+            repo.findWithApprovals(proposedChangesId),
+            repo.findAuthorizationById(authId),
+        ]);
 
         if (!proposedChange) {
             throw new Error(`Proposed change with ID ${proposedChangesId} not found`);
         }
-
-        // Get submitter information
-        const submitter = await prismaDB2.mst_authorization.findUnique({
-            where: { id: authId }
-        });
 
         if (!submitter || !submitter.email) {
             console.log(`No valid submitter email found for auth ID ${authId}`);

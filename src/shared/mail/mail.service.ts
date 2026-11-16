@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { prismaDB2 } from "../../../../config/database";
+import { prismaDB2 } from "../config/database";
 
 
 // Definisi tipe untuk parameter email
@@ -10,26 +10,28 @@ interface EmailOptions {
     cc?: string;
 }
 
+// Satu transporter pooled dipakai ulang, bukan buat koneksi SMTP baru tiap email
+const transport = nodemailer.createTransport({
+    pool: true,
+    host: process.env.SMTP_HOST || "mail.aio.co.id",
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+    },
+    tls: {
+        rejectUnauthorized: false,
+    },
+    debug: false, // Ubah menjadi false kecuali untuk debugging
+});
+
 // Fungsi untuk mengirim email
 const sendEmail = async ({ to, subject, html, cc = '' }: EmailOptions) => {
     try {
         // Tambahkan timestamp untuk memastikan uniqueness
         const timestamp = new Date().getTime();
         
-        const transport = nodemailer.createTransport({
-            host: process.env.SMTP_HOST || "mail.aio.co.id",
-            port: Number(process.env.SMTP_PORT) || 587,
-            secure: process.env.SMTP_SECURE === "true",
-            auth: {
-                user: process.env.SMTP_USER || "appsskb@aio.co.id",
-                pass: process.env.SMTP_PASS || "Plicaskb1234",
-            },
-            tls: {
-                rejectUnauthorized: false,
-            },
-            debug: false, // Ubah menjadi false kecuali untuk debugging
-        });
-
         // Tambahkan nomor acak ke subject untuk menghindari grouping
         const uniqueSubject = `${subject} [${timestamp.toString().substring(8)}]`;
 

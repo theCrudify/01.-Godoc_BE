@@ -1,16 +1,6 @@
-// src/main-structure/Activity/Document/2_ProposedChanges/ApproverChangeController.ts
+import { sendEmail } from "../../../shared/mail/mail.service";
+import * as repo from "./approver-change.repository";
 
-import { prismaDB2 } from '../../../../../config/database';
-import { sendEmail } from '../../../Email/EmailServiceEnvironment/EmailServiceExport'
-// Create this as a separate file: src/main-structure/Activity/Email/ApproverChangeEmail.ts
-// Then import these functions in your ApproverChangeController.ts
-
-
-
-
-/**
- * Send email notification when approver change request is submitted
- */
 /**
  * Send email notification when approver change request is submitted
  */
@@ -110,8 +100,9 @@ export const sendApproverChangeRequestEmail = async (changeRequest: any, request
     `;
 
     // Send to each admin
+    // Sent concurrently; each send is caught individually so the outcome matches a sequential loop
     let successCount = 0;
-    for (const adminEmail of adminEmails) {
+    await Promise.all(adminEmails.map(async (adminEmail) => {
       if (adminEmail) {
         try {
           await sendEmail({
@@ -125,27 +116,25 @@ export const sendApproverChangeRequestEmail = async (changeRequest: any, request
           console.error(`❌ Failed to send email to ${adminEmail}:`, emailError);
         }
       }
-    }
+    }));
 
     console.log(`📧 Email sending completed. Success: ${successCount}/${adminEmails.length}`);
 
     // Log the notification
-    await prismaDB2.tr_notification_log.create({
-      data: {
-        notification_type: 'approver_change_request',
-        recipients: adminEmails.filter(Boolean),
-        sent_count: successCount,
-        urgent: urgent,
-        related_id: changeRequest.id,
-        details: {
-          request_id: changeRequest.id,
-          project_name: projectName,
-          from_approver: fromApprover,
-          to_approver: toApprover,
-          requester: requester,
-          requester_department_id: requesterDepartmentId,
-          reason: reason
-        }
+    await repo.createNotificationLog({
+      notification_type: 'approver_change_request',
+      recipients: adminEmails.filter(Boolean),
+      sent_count: successCount,
+      urgent: urgent,
+      related_id: changeRequest.id,
+      details: {
+        request_id: changeRequest.id,
+        project_name: projectName,
+        from_approver: fromApprover,
+        to_approver: toApprover,
+        requester: requester,
+        requester_department_id: requesterDepartmentId,
+        reason: reason
       }
     });
 
@@ -462,67 +451,8 @@ export const sendBypassNotificationEmails = async (
  */
 const getAdminEmails = async (requester_department_id?: number): Promise<string[]> => {
   try {
-    console.log('🔍 DEBUG: Getting admin emails for department_id:', requester_department_id);
-    
-    const whereConditions = {
-      AND: [
-        {
-          status: true,
-          is_deleted: false,
-          email: {
-            not: null
-          }
-        },
-        {
-          OR: [
-            // All Super Admin (no department filter)
-            {
-              role: {
-                role_name: 'Super Admin'
-              }
-            },
-            // Admin with same department as requester (only if department_id provided)
-            ...(requester_department_id ? [{
-              AND: [
-                {
-                  role: {
-                    role_name: 'Admin'
-                  }
-                },
-                {
-                  department_id: requester_department_id
-                }
-              ]
-            }] : [])
-          ]
-        }
-      ]
-    };
+    const admins = await repo.findAdminEmails(requester_department_id);
 
-    const admins = await prismaDB2.mst_authorization.findMany({
-      where: whereConditions,
-      include: {
-        role: {
-          select: {
-            role_name: true
-          }
-        },
-        department: {
-          select: {
-            department_name: true
-          }
-        }
-      }
-    });
-
-    console.log('🔍 DEBUG: Found admins:', admins.map(admin => ({
-      name: admin.employee_name,
-      email: admin.email,
-      role: admin.role?.role_name,
-      department: admin.department?.department_name,
-      department_id: admin.department_id
-    })));
-    
     console.log('🔍 DEBUG: Admin count:', admins.length);
 
     const emails = admins.map(admin => admin.email).filter(Boolean) as string[];
