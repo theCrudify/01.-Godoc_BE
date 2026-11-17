@@ -142,14 +142,14 @@ Files are stored in the `src/uploads` directory with features for:
 The system uses Nodemailer with an idempotent delivery system:
 
 ```typescript
-// Email configuration
+// Email configuration (configured via environment variables)
 const transport = nodemailer.createTransport({
-  host: "mail.aio.co.id",
-  port: 587,
-  secure: false,
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
-    user: "appsskb@aio.co.id",
-    pass: "Plicaskb1234",
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
   tls: {
     rejectUnauthorized: false,

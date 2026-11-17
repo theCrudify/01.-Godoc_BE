@@ -13,7 +13,7 @@ interface EmailOptions {
 // Satu transporter pooled dipakai ulang, bukan buat koneksi SMTP baru tiap email
 const transport = nodemailer.createTransport({
     pool: true,
-    host: process.env.SMTP_HOST || "mail.aio.co.id",
+    host: process.env.SMTP_HOST || "smtp.example.com",
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === "true",
     auth: {
@@ -37,7 +37,7 @@ const sendEmail = async ({ to, subject, html, cc = '' }: EmailOptions) => {
 
         // Konfigurasi email
         const mailOptions: any = {
-            from: process.env.SMTP_FROM || '"Go-Document System" <appsskb@aio.co.id>',
+            from: process.env.SMTP_FROM || `"Go-Document System" <${process.env.SMTP_USER || "noreply@example.com"}>`,
             to,
             subject: uniqueSubject,
             html,
